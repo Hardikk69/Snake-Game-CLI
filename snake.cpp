@@ -15,6 +15,7 @@ while (game is running) {
 #include <windows.h> // for coordinate system, how to navigate to specific coordinate on screen & Sleep, SetConsoleCursorPosition, SetConsoleTextAttribute
 #include <ctime>
 #include <cstdlib>
+#include <functional>
 
 using namespace std;
 
@@ -118,12 +119,13 @@ struct Food {
         special = false;
         spawnTime = 0;
     }
-    void spawn(const Snake &snake, const vector<Position> &obstacles, bool forceNormal = false) {
-        special = (!forceNormal) && (rand() % 100 < 15); // 15% chance
+    void spawn(const Snake &snake, const vector<Position> &obstacles, bool forceNormal = false,
+               const function<int()> &random = rand) {
+        special = (!forceNormal) && (random() % 100 < 15); // 15% chance
         spawnTime = clock();
         while (true) {
-            pos.x = rand() % WIDTH;
-            pos.y = rand() % HEIGHT;
+            pos.x = random() % WIDTH;
+            pos.y = random() % HEIGHT;
             if (snake.checkCollision(pos)) continue;
             bool collide = false;
             for (auto& o : obstacles) {
@@ -159,11 +161,15 @@ class Game {
     int lastObstacleScore = 0; // cooldown for obstacle spawning
     
     HANDLE hConsole;
+    function<int()> random; // seam: every random draw goes through here
 
 public:
-    Game() {
+    explicit Game(function<int()> random_ = rand) : random(random_) {
         hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
     }
+
+    int getScore() const { return score; }
+    const Snake& getSnake() const { return snake; }
 
     void run() {
         srand((unsigned)time(nullptr));
@@ -214,16 +220,18 @@ private:
         }
     }
 
+public:
     void reset() {
         snake.reset();
         score = 0;
         obstacles.clear();
         spawnObstacles(obstacleCount);
-        food.spawn(snake, obstacles);
+        food.spawn(snake, obstacles, false, random);
         running = true;
         lastObstacleScore = 0;
     }
 
+private:
     void drawBorder() {
         system("cls");
         SetConsoleTextAttribute(hConsole, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE); // white for border
@@ -245,7 +253,7 @@ private:
 
     void spawnObstacles(int count) {
         while ((int)obstacles.size() < count) {
-            Position pos(rand() % WIDTH, rand() % HEIGHT);
+            Position pos(random() % WIDTH, random() % HEIGHT);
             if (!snake.checkCollision(pos) && pos != food.pos && !isOccupied(pos, obstacles)) {
                 obstacles.push_back(pos);
             }
@@ -281,6 +289,7 @@ private:
         }
     }
 
+public:
     void updateGame() {
         Position nextHead = snake.getHead();
         switch (snake.getDirection()) {
@@ -310,11 +319,11 @@ private:
         if (nextHead == food.pos) {
             score += food.value();
             grow = true;
-            food.spawn(snake, obstacles);
+            food.spawn(snake, obstacles, false, random);
         }
 
         if (food.expired()) {
-            food.spawn(snake, obstacles, true);
+            food.spawn(snake, obstacles, true, random);
         }
 
         if (!snake.move(grow)) {
@@ -334,6 +343,7 @@ private:
         }
     }
 
+private:
     void draw() {
         static bool firstDraw = true;
         if (firstDraw) {
